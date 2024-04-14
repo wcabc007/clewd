@@ -9,6 +9,7 @@ const {createServer: Server, IncomingMessage, ServerResponse} = require('node:ht
 /******************************************************* */
 let currentIndex, Firstlogin = true, changeflag = 0, changing, changetime = 0, totaltime, uuidOrgArray = [], model, cookieModel, tokens, apiKey, timestamp, regexLog, isPro;
 
+const url = require('url');
 const asyncPool = async (poolLimit, array, iteratorFn) => {
     const ret = [], executing = [];
     for (const item of array) {
@@ -31,16 +32,20 @@ const asyncPool = async (poolLimit, array, iteratorFn) => {
         return changing = false;
     } else {
         changeflag = 0, changing = true;
-        !cleanup && (currentIndex = (currentIndex + 1) % Config.CookieArray.length);
-        console.log(`Changing Cookie...\n`);
+        if(!cleanup) {
+            currentIndex = (currentIndex + 1) % Config.CookieArray.length;
+            console.log(`Changing Cookie...\n`);
+        }
         setTimeout(() => {
             onListen();
             resetTimer && (timestamp = Date.now());
         }, !Config.rProxy || Config.rProxy === AI.end() ? 15000 + timestamp - Date.now() : 0);
     }
-}, CookieCleaner = percentage => {
+}, CookieCleaner = (flag, percentage) => {
+    Config.WastedCookie.push(flag + '@' + Config.CookieArray[currentIndex].split('@').toReversed()[0]);
     Config.CookieArray.splice(currentIndex, 1), Config.Cookie = '';
-    Config.Cookiecounter < 0 && console.log(`[progress]: [32m${percentage.toFixed(2)}%[0m\n[length]: [33m${Config.CookieArray.length}[0m\n`)
+    Config.Cookiecounter < 0 && console.log(`[progress]: [32m${percentage.toFixed(2)}%[0m\n[length]: [33m${Config.CookieArray.length}[0m\n`);
+    console.log(`Cleaning Cookie...\n`);
     writeSettings(Config);
     return CookieChanger(true, true);
 }, padtxt = content => {
@@ -148,6 +153,7 @@ const ConfigPath = joinP(__dirname, './config.js'), LogPath = joinP(__dirname, '
 let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonated = false, Config = {
     Cookie: '',
     CookieArray: [],
+    WastedCookie: [],
     Cookiecounter: 3,
     CookieIndex: 0,
     ProxyPassword: '',
@@ -274,11 +280,16 @@ const updateParams = res => {
         }
     });
     await checkResErr(bootstrapRes);
-    const bootstrap = await bootstrapRes.json(), bootAccInfo = bootstrap.account.memberships.find(item => item.organization.capabilities.includes('chat')).organization;
+    const bootstrap = await bootstrapRes.json();
+    if (bootstrap.account === null) {
+        console.log(`[35mNull![0m`);
+        return CookieCleaner('Null', percentage);
+    }
+    const bootAccInfo = bootstrap.account.memberships.find(item => item.organization.capabilities.includes('chat')).organization;
     cookieModel = bootstrap.statsig.values.layer_configs["HPOHwBLNLQLxkj5Yn4bfSkgCQnBX28kPR7h/BNKdVLw="]?.value?.console_default_model_override?.model || bootstrap.statsig.values.dynamic_configs["6zA9wvTedwkzjLxWy9PVe7yydI00XDQ6L5Fejjq/2o8="]?.value?.model;
     isPro = bootAccInfo.capabilities.includes('claude_pro');
-    if ((isPro ? 'claude_pro' : cookieModel) != Config.CookieArray[currentIndex].split('@')[0]) {
-        Config.CookieArray[currentIndex] = (isPro ? 'claude_pro' : cookieModel) + '@' + Config.CookieArray[currentIndex].split('@').toReversed()[0];
+    if (Config.CookieArray?.length > 0 && (isPro ? 'claude_pro' : cookieModel) != Config.CookieArray[currentIndex].split('@')[0]) {
+        Config.CookieArray[currentIndex] = (isPro ? 'claude_pro' : cookieModel) + '@' + Config.Cookie;
         writeSettings(Config);
     }
     if (!isPro && model && model != cookieModel) return CookieChanger();
@@ -289,8 +300,9 @@ const updateParams = res => {
         capabilities: bootAccInfo.capabilities
     }); //↓
     if (uuidOrgArray.includes(bootAccInfo.uuid) && percentage <= 100 && Config.CookieArray?.length > 0 || bootAccInfo.api_disabled_reason && !bootAccInfo.api_disabled_until || !bootstrap.account.completed_verification_at) {
-        console.log(`[31m${bootAccInfo.api_disabled_reason ? 'Disabled' : !bootstrap.account.completed_verification_at ? 'Unverified' : 'Overlap'}![0m`);
-        return CookieCleaner(percentage);
+        const flag = bootAccInfo.api_disabled_reason ? 'Disabled' : !bootstrap.account.completed_verification_at ? 'Unverified' : 'Overlap';
+        console.log(`[31m${flag}![0m`);
+        return CookieCleaner(flag, percentage);
     } else uuidOrgArray.push(bootAccInfo.uuid);
     if (Config.Cookiecounter < 0) {
         console.log(`[progress]: [32m${percentage.toFixed(2)}%[0m\n[length]: [33m${Config.CookieArray.length}[0m\n`);
@@ -339,7 +351,7 @@ const updateParams = res => {
             console.log(`${type}: ${json.error ? json.error.message || json.error.type || json.detail : 'OK'}`);
         })(flag.type))));
         console.log(`${banned ? '[31mBanned' : '[35mRestricted'}![0m`); //
-        return banned ? CookieCleaner() : Config.Settings.SkipRestricted && CookieChanger(); //
+        return banned ? CookieCleaner('Banned') : Config.Settings.SkipRestricted && CookieChanger(); //
     }
     const convRes = await (Config.Settings.Superfetch ? Superfetch : fetch)(`${Config.rProxy || AI.end()}/api/organizations/${accInfo.uuid}/chat_conversations`, { //const convRes = await fetch(`${Config.rProxy || AI.end()}/api/organizations/${uuidOrg}/chat_conversations`, {
         method: 'GET',
@@ -355,7 +367,7 @@ const updateParams = res => {
     } catch (err) {
         if (err.message === 'Invalid authorization') {
             console.log(`[31mInvalid![0m`);
-            return CookieCleaner(percentage);
+            return CookieCleaner('Invalid', percentage);
         }
         console.error('[33mClewd:[0m\n%o', err);
         CookieChanger();
@@ -378,6 +390,9 @@ const updateParams = res => {
             }).end();
         })(0, res);
     }
+    const URL = url.parse(req.url.replace(/\/v1(\?.*)\$(\/.*)$/, '/v1$2$1'), true);
+    const api_rProxy = URL.query?.api_rProxy || Config.api_rProxy;
+    req.url = URL.pathname;
     switch (req.url) {
       case '/v1/models':
 /***************************** */
@@ -385,7 +400,7 @@ const updateParams = res => {
             let models;
             if (/oaiKey:/.test(req.headers.authorization)) {
                 try {
-                    const modelsRes = await fetch(Config.api_rProxy.replace(/(\/v1)?\/? *$/, '') + '/v1/models', {
+                    const modelsRes = await fetch(api_rProxy.replace(/(\/v1)?\/? *$/, '') + '/v1/models', {
                         method: 'GET',
                         headers: { authorization: req.headers.authorization.match(/(?<=oaiKey:).*/)?.[0].split(',')[0].trim() }
                     });
@@ -430,9 +445,9 @@ const updateParams = res => {
                     const thirdKey = req.headers.authorization?.match(/(?<=(3rd|oai)Key:).*/), oaiAPI = /oaiKey:/.test(req.headers.authorization);
                     apiKey = thirdKey?.[0].split(',').map(item => item.trim()) || req.headers.authorization?.match(/sk-ant-api\d\d-[\w-]{86}-[\w-]{6}AA/g);
                     model = apiKey || /claude-(?!default)/.test(body.model) || isPro ? body.model.replace(/--force/, '').trim() : cookieModel;
-                    let max_tokens_to_sample = body.max_tokens, stop_sequences = body.stop && body.stop.concat(['\n\nHuman:', '\n\nAssistant:']), top_p = typeof body.top_p === 'number' ? body.top_p : undefined, top_k = typeof body.top_k === 'number' ? body.top_k : undefined;
+                    let max_tokens_to_sample = body.max_tokens, stop_sequences = body.stop, top_p = typeof body.top_p === 'number' ? body.top_p : undefined, top_k = typeof body.top_k === 'number' ? body.top_k : undefined;
                     if (!apiKey && (Config.ProxyPassword != '' && req.headers.authorization != 'Bearer ' + Config.ProxyPassword || !uuidOrg)) {
-                        throw Error(uuidOrg ? 'ProxyPassword Wrong' : 'apiKey Format Wrong');
+                        throw Error(uuidOrg ? 'ProxyPassword Wrong' : 'No cookie available or apiKey Format Wrong');
                     } else if (!changing && !apiKey && (!isPro && model != cookieModel)) CookieChanger();
                     await waitForChange();
 /************************* */
@@ -658,6 +673,8 @@ const updateParams = res => {
                     })(messages, type);
 /******************************** */
                     const newtokenizer = /claude-(2\.1-|[3-9])/.test(model), messagesAPI = oaiAPI || newtokenizer && !/<\|completeAPI\|>/.test(prompt) || /<\|messagesAPI\|>/.test(prompt), messagesLog = /<\|messagesLog\|>/.test(prompt), fusion = apiKey && messagesAPI && /<\|Fusion Mode\|>/.test(prompt), wedge = '\r';
+                    const stopSet = /<\|stopSet *(\[.*?\]) *\|>/.exec(prompt)?.[1], stopRevoke = /<\|stopRevoke *(\[.*?\]) *\|>/.exec(prompt)?.[1];
+                    if (stop_sequences || stopSet || stopRevoke) stop_sequences = JSON.parse(stopSet || '[]').concat(stop_sequences).concat(['\n\nHuman:', '\n\nAssistant:']).filter(item => !JSON.parse(stopRevoke || '[]').includes(item) && item);
                     apiKey && (type = oaiAPI ? 'oai_api' : messagesAPI ? 'msg_api' : type);
                     prompt = Config.Settings.xmlPlot ? xmlPlot(prompt, !/claude-(2\.1|[3-9])/.test(model)) : apiKey ? `\n\nHuman: ${genericFixes(prompt)}\n\nAssistant:` : genericFixes(prompt).trim();
                     Config.Settings.FullColon && (prompt = newtokenizer ?
@@ -667,7 +684,7 @@ const updateParams = res => {
 /******************************** */
                     console.log(`${model} [[2m${type}[0m]${!retryRegen && systems.length > 0 ? ' ' + systems.join(' [33m/[0m ') : ''}`);
                     'R' !== type || prompt || (prompt = '...regen...');
-                    Logger?.write(`\n\n-------\n[${(new Date).toLocaleString()}]\n${Main}\n####### ${model} (${type}) regex:\n${regexLog}\n####### PROMPT ${tokens}t:\n${prompt}\n--\n####### REPLY:\n`); //Logger?.write(`\n\n-------\n[${(new Date).toLocaleString()}]\n####### MODEL: ${model}\n####### PROMPT (${type}):\n${prompt}\n--\n####### REPLY:\n`);
+                    Logger?.write(`\n\n-------\n[${(new Date).toLocaleString()}]\n${Main}\n####### ${model} (${type})\n${JSON.stringify({FusionMode: fusion, PassParams: Config.Settings.PassParams, stop_sequences, temperature, top_k, top_p}, null, 2)}\n\n####### regex:\n${regexLog}\n####### PROMPT ${tokens}t:\n${prompt}\n--\n####### REPLY:\n`); //Logger?.write(`\n\n-------\n[${(new Date).toLocaleString()}]\n####### MODEL: ${model}\n####### PROMPT (${type}):\n${prompt}\n--\n####### REPLY:\n`);
                     retryRegen || (fetchAPI = await (async (signal, model, prompt, temperature, type) => {
 /******************************** */
                         if (apiKey) {
@@ -685,7 +702,7 @@ const updateParams = res => {
                                 }, []).filter(message => message.content), oaiAPI ? messages.unshift({role: 'system', content: rounds[0].trim()}) : system = rounds[0].trim();
                                 messagesLog && console.log({system, messages});
                             }
-                            const res = await fetch((Config.api_rProxy || 'https://api.anthropic.com').replace(/(\/v1)? *$/, thirdKey ? '$1' : '/v1').trim('/') + (oaiAPI ? '/chat/completions' : messagesAPI ? '/messages' : '/complete'), {
+                            const res = await fetch((api_rProxy || 'https://api.anthropic.com').replace(/(\/v1)? *$/, thirdKey ? '$1' : '/v1').trim('/') + (oaiAPI ? '/chat/completions' : messagesAPI ? '/messages' : '/complete'), {
                                 method: 'POST',
                                 signal,
                                 headers: {
