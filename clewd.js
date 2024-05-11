@@ -7,7 +7,7 @@
 const {createServer: Server, IncomingMessage, ServerResponse} = require('node:http'), {createHash: Hash, randomUUID, randomInt, randomBytes} = require('node:crypto'), {TransformStream, ReadableStream} = require('node:stream/web'), {Readable, Writable} = require('node:stream'), {Blob} = require('node:buffer'), {existsSync: exists, writeFileSync: write, createWriteStream} = require('node:fs'), {join: joinP} = require('node:path'), {ClewdSuperfetch: Superfetch, SuperfetchAvailable} = require('./lib/clewd-superfetch'), {AI, fileName, genericFixes, bytesToSize, setTitle, checkResErr, Replacements, Main} = require('./lib/clewd-utils'), ClewdStream = require('./lib/clewd-stream');
 
 /******************************************************* */
-let currentIndex, Firstlogin = true, changeflag = 0, changing, changetime = 0, totaltime, uuidOrgArray = [], model, cookieModel, tokens, apiKey, timestamp, regexLog, isPro;
+let currentIndex, Firstlogin = true, changeflag = 0, changing, changetime = 0, totaltime, uuidOrgArray = [], model, cookieModel, tokens, apiKey, timestamp, regexLog, isPro, oaiModel = [];
 
 const url = require('url');
 const asyncPool = async (poolLimit, array, iteratorFn) => {
@@ -351,8 +351,10 @@ const updateParams = res => {
             console.log(`${type}: ${json.error ? json.error.message || json.error.type || json.detail : 'OK'}`);
         })(flag.type))));
         console.log(`${banned ? '[31mBanned' : '[35mRestricted'}![0m`); //
-        return banned ? CookieCleaner('Banned') : Config.Settings.SkipRestricted && CookieChanger(); //
+        if (banned) return CookieCleaner('Banned') //
+        else if (Config.Settings.SkipRestricted) return CookieChanger(); //
     }
+    changing = false; //
     const convRes = await (Config.Settings.Superfetch ? Superfetch : fetch)(`${Config.rProxy || AI.end()}/api/organizations/${accInfo.uuid}/chat_conversations`, { //const convRes = await fetch(`${Config.rProxy || AI.end()}/api/organizations/${uuidOrg}/chat_conversations`, {
         method: 'GET',
         headers: {
@@ -361,7 +363,6 @@ const updateParams = res => {
         }
     }), conversations = await convRes.json();
     updateParams(convRes);
-    changing = false; //
     conversations.length > 0 && await asyncPool(10, conversations, async (conv) => await deleteChat(conv.uuid)); //await Promise.all(conversations.map((conv => deleteChat(conv.uuid))));
 /***************************** */
     } catch (err) {
@@ -405,6 +406,7 @@ const updateParams = res => {
                         headers: { authorization: req.headers.authorization.match(/(?<=oaiKey:).*/)?.[0].split(',')[0].trim() }
                     });
                     models = await modelsRes.json();
+                    oaiModel.splice(0);
                 } catch(err) {}
             }
             res.json({
@@ -414,6 +416,7 @@ const updateParams = res => {
                 }].concat(models?.data).reduce((acc, current) => {
                     if (current?.id && !acc.some(model => model.id === current.id)) {
                         acc.push(current);
+                        oaiModel.push(current);
                     }
                     return acc;
                 }, [])
@@ -482,7 +485,7 @@ const updateParams = res => {
                         throw Error('Only one can be used at the same time: AllSamples/NoSamples');
                     }
                     //const model = body.model;//if (model === AI.mdl()[0]) {//    return;//}
-                    if (!/claude-.*/.test(model) && !/--force/.test(body.model)) {
+                    if (!AI.mdl().concat(oaiModel).includes(model) || !/claude-.*/.test(model) && !/--force/.test(body.model)) {
                         throw Error('Invalid model selected: ' + model);
                     }
                     curPrompt = {
@@ -672,12 +675,12 @@ const updateParams = res => {
                         };
                     })(messages, type);
 /******************************** */
-                    const newtokenizer = /claude-(2\.1-|[3-9])/.test(model), messagesAPI = oaiAPI || newtokenizer && !/<\|completeAPI\|>/.test(prompt) || /<\|messagesAPI\|>/.test(prompt), messagesLog = /<\|messagesLog\|>/.test(prompt), fusion = apiKey && messagesAPI && /<\|Fusion Mode\|>/.test(prompt), wedge = '\r';
+                    const legacy = /claude-([12]|instant)/i.test(model), messagesAPI = oaiAPI || !legacy && !/<\|completeAPI\|>/.test(prompt) || /<\|messagesAPI\|>/.test(prompt), messagesLog = /<\|messagesLog\|>/.test(prompt), fusion = apiKey && messagesAPI && /<\|Fusion Mode\|>/.test(prompt), wedge = '\r';
                     const stopSet = /<\|stopSet *(\[.*?\]) *\|>/.exec(prompt)?.[1], stopRevoke = /<\|stopRevoke *(\[.*?\]) *\|>/.exec(prompt)?.[1];
                     if (stop_sequences || stopSet || stopRevoke) stop_sequences = JSON.parse(stopSet || '[]').concat(stop_sequences).concat(['\n\nHuman:', '\n\nAssistant:']).filter(item => !JSON.parse(stopRevoke || '[]').includes(item) && item);
                     apiKey && (type = oaiAPI ? 'oai_api' : messagesAPI ? 'msg_api' : type);
-                    prompt = Config.Settings.xmlPlot ? xmlPlot(prompt, !/claude-(2\.1|[3-9])/.test(model)) : apiKey ? `\n\nHuman: ${genericFixes(prompt)}\n\nAssistant:` : genericFixes(prompt).trim();
-                    Config.Settings.FullColon && (prompt = newtokenizer ?
+                    prompt = Config.Settings.xmlPlot ? xmlPlot(prompt, legacy && !/claude-2\.1/i.test(model)) : apiKey ? `\n\nHuman: ${genericFixes(prompt)}\n\nAssistant:` : genericFixes(prompt).trim();
+                    Config.Settings.FullColon && (prompt = !legacy ?
                         prompt.replace(fusion ? /\n(?!\nAssistant:\s*$)(?=\n(Human|Assistant):)/gs : apiKey ? /(?<!\n\nHuman:.*)\n(?=\nAssistant:)|\n(?=\nHuman:)(?!.*\n\nAssistant:)/gs : /\n(?=\n(Human|Assistant):)/g, '\n' + wedge) : 
                         prompt.replace(fusion ? /(?<=\n\nAssistant):(?!\s*$)|(?<=\n\nHuman):/gs : apiKey ? /(?<!\n\nHuman:.*)(?<=\n\nAssistant):|(?<=\n\nHuman):(?!.*\n\nAssistant:)/gs : /(?<=\n\n(Human|Assistant)):/g, '﹕'));
                     prompt = padtxt(prompt);
@@ -696,7 +699,7 @@ const updateParams = res => {
                                     return [{role: 'user', content: turns[0].trim()}].concat(turns.slice(1).flatMap(turn => [{role: 'assistant', content: turn.trim()}]));
                                 }).reduce((acc, current) => {
                                     if (Config.Settings.FullColon && acc.length > 0 && (acc[acc.length - 1].role === current.role || !acc[acc.length - 1].content)) {
-                                        acc[acc.length - 1].content += (current.role === 'user' ? 'Human' : 'Assistant').replace(/.*/, newtokenizer ? '\n' + wedge + '\n$&: ' : '\n$&﹕ ') + current.content;
+                                        acc[acc.length - 1].content += (current.role === 'user' ? 'Human' : 'Assistant').replace(/.*/, legacy ? '\n$&﹕ ' : '\n' + wedge + '\n$&: ') + current.content;
                                     } else acc.push(current);
                                     return acc;
                                 }, []).filter(message => message.content), oaiAPI ? messages.unshift({role: 'system', content: rounds[0].trim()}) : system = rounds[0].trim();
@@ -706,6 +709,7 @@ const updateParams = res => {
                                 method: 'POST',
                                 signal,
                                 headers: {
+                                    'User-Agent': 'PostmanRuntime/7.38.0',
                                     'authorization': 'Bearer ' + key,
                                     'Content-Type': 'application/json',
                                     'x-api-key': key,
@@ -849,7 +853,7 @@ const updateParams = res => {
       default:
         !['/', '/v1', '/favicon.ico'].includes(req.url) && (console.log('unknown request: ' + req.url)); //console.log('unknown request: ' + req.url);
         res.writeHead(200, {'Content-Type': 'text/html'}); //
-        res.write(`<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<script>\nfunction copyToClipboard(text) {\n  var textarea = document.createElement("textarea");\n  textarea.textContent = text;\n  textarea.style.position = "fixed";\n  document.body.appendChild(textarea);\n  textarea.select();\n  try {\n    return document.execCommand("copy");\n  } catch (ex) {\n    console.warn("Copy to clipboard failed.", ex);\n    return false;\n  } finally {\n    document.body.removeChild(textarea);\n  }\n}\nfunction copyLink(event) {\n  event.preventDefault();\n  const url = new URL(window.location.href);\n  const link = url.protocol + '//' + url.host + '/v1';\n  copyToClipboard(link);\n  alert('链接已复制: ' + link);\n}\n</script>\n</head>\n<body>\n${Main}<br/><br/>完全开源、免费且禁止商用<br/><br/>点击复制反向代理: <a href="v1" onclick="copyLink(event)">Copy Link</a><br/>填入OpenAI API反向代理并选择OpenAI分类中的claude模型（酒馆需打开Show "External" models，仅在api模式有模型选择差异）<br/><br/>教程与FAQ: <a href="https://rentry.org/teralomaniac_clewd" target="FAQ">Rentry</a> | <a href="https://discord.com/invite/B7Wr25Z7BZ" target="FAQ">Discord</a><br/><br/><br/>❗警惕任何高风险cookie/伪api(25k cookie)购买服务，以及破坏中文AI开源共享环境倒卖免费资源抹去署名的群组（🈲黑名单：AI新服务、浅睡(鲑鱼)、赛博女友(青麈/科普晓百生)🈲）\n</body>\n</html>`); //
+        res.write(`<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<script>\nfunction copyToClipboard(text) {\n  var textarea = document.createElement("textarea");\n  textarea.textContent = text;\n  textarea.style.position = "fixed";\n  document.body.appendChild(textarea);\n  textarea.select();\n  try {\n    return document.execCommand("copy");\n  } catch (ex) {\n    console.warn("Copy to clipboard failed.", ex);\n    return false;\n  } finally {\n    document.body.removeChild(textarea);\n  }\n}\nfunction copyLink(event) {\n  event.preventDefault();\n  const url = new URL(window.location.href);\n  const link = url.protocol + '//' + url.host + '/v1';\n  copyToClipboard(link);\n  alert('链接已复制: ' + link);\n}\n</script>\n</head>\n<body>\n${Main}<br/><br/>完全开源、免费且禁止商用<br/><br/>点击复制反向代理: <a href="v1" onclick="copyLink(event)">Copy Link</a><br/>填入OpenAI API反向代理并选择OpenAI分类中的claude模型（酒馆需打开Show "External" models，仅在api模式有模型选择差异）<br/><br/>教程与FAQ: <a href="https://rentry.org/teralomaniac_clewd" target="FAQ">Rentry</a> | <a href="https://discord.com/invite/B7Wr25Z7BZ" target="FAQ">Discord</a><br/><br/><br/>❗警惕任何高风险cookie/伪api(25k cookie)购买服务，以及破坏中文AI开源共享环境倒卖免费资源抹去署名的群组（🈲黑名单：酒馆小二、AI新服务、浅睡(鲑鱼)、赛博女友制作人(青麈/overloaded/科普晓百生)🈲）\n</body>\n</html>`); //
         res.end(); //res.json(//    {//    error: {//        message: '404 Not Found',//        type: 404,//        param: null,//        code: 404//    }//}, 404);
     }
 }));
