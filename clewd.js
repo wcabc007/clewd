@@ -406,17 +406,17 @@ const updateParams = res => {
                         headers: { authorization: req.headers.authorization.match(/(?<=oaiKey:).*/)?.[0].split(',')[0].trim() }
                     });
                     models = await modelsRes.json();
-                    oaiModel.splice(0);
                 } catch(err) {}
             }
             res.json({
                 data: [
                     ...AI.mdl().map((name => ({ id: name }))), {
                         id: 'claude-default'
-                }].concat(models?.data).reduce((acc, current) => {
+                }].concat(models?.data).reduce((acc, current, index) => {
+                    index === 0 && oaiModel.splice(0);
                     if (current?.id && !acc.some(model => model.id === current.id)) {
                         acc.push(current);
-                        oaiModel.push(current);
+                        oaiModel.push(current.id);
                     }
                     return acc;
                 }, [])
@@ -485,7 +485,7 @@ const updateParams = res => {
                         throw Error('Only one can be used at the same time: AllSamples/NoSamples');
                     }
                     //const model = body.model;//if (model === AI.mdl()[0]) {//    return;//}
-                    if (!AI.mdl().concat(oaiModel).includes(model) || !/claude-.*/.test(model) && !/--force/.test(body.model)) {
+                    if (!AI.mdl().concat(oaiModel).includes(model) && !/claude-.*/.test(model) && !/--force/.test(body.model)) {
                         throw Error('Invalid model selected: ' + model);
                     }
                     curPrompt = {
