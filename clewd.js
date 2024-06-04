@@ -187,7 +187,7 @@ let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonate
         FullColon: true,
         padtxt: "1000,1000,15000",
         xmlPlot: true,
-        SkipRestricted: true,
+        SkipRestricted: false,
         Superfetch: true
     }
 };
@@ -445,12 +445,12 @@ const updateParams = res => {
                     temperature = typeof temperature === 'number' ? Math.max(.1, Math.min(1, temperature)) : undefined; //temperature = Math.max(.1, Math.min(1, temperature));
                     let {messages} = body;
 /************************* */
-                    const thirdKey = req.headers.authorization?.match(/(?<=(3rd|oai)Key:).*/), oaiAPI = /oaiKey:/.test(req.headers.authorization);
+                    const thirdKey = req.headers.authorization?.match(/(?<=(3rd|oai)Key:).*/), oaiAPI = /oaiKey:/.test(req.headers.authorization), forceModel = /--force/.test(body.model);
                     apiKey = thirdKey?.[0].split(',').map(item => item.trim()) || req.headers.authorization?.match(/sk-ant-api\d\d-[\w-]{86}-[\w-]{6}AA/g);
                     model = apiKey || /claude-(?!default)/.test(body.model) || isPro ? body.model.replace(/--force/, '').trim() : cookieModel;
                     let max_tokens_to_sample = body.max_tokens, stop_sequences = body.stop, top_p = typeof body.top_p === 'number' ? body.top_p : undefined, top_k = typeof body.top_k === 'number' ? body.top_k : undefined;
                     if (!apiKey && (Config.ProxyPassword != '' && req.headers.authorization != 'Bearer ' + Config.ProxyPassword || !uuidOrg)) {
-                        throw Error(uuidOrg ? 'ProxyPassword Wrong' : 'No cookie available or apiKey Format Wrong');
+                        throw Error(uuidOrg ? 'ProxyPassword Wrong' : 'No cookie available or apiKey format wrong');
                     } else if (!changing && !apiKey && (!isPro && model != cookieModel)) CookieChanger();
                     await waitForChange();
 /************************* */
@@ -485,7 +485,7 @@ const updateParams = res => {
                         throw Error('Only one can be used at the same time: AllSamples/NoSamples');
                     }
                     //const model = body.model;//if (model === AI.mdl()[0]) {//    return;//}
-                    if (!AI.mdl().concat(oaiModel).includes(model) && !/claude-.*/.test(model) && !/--force/.test(body.model)) {
+                    if (!AI.mdl().concat(oaiModel).includes(model) && !/claude-.*/.test(model) && !forceModel) {
                         throw Error('Invalid model selected: ' + model);
                     }
                     curPrompt = {
@@ -753,7 +753,7 @@ const updateParams = res => {
                         const body = {
                             attachments,
                             files: [],
-                            model,
+                            model: isPro || forceModel ? model : undefined,
                             ...Config.Settings.PassParams && {
                                 max_tokens_to_sample, //
                                 stop_sequences, //
