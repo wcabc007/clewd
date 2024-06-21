@@ -288,13 +288,10 @@ const updateParams = res => {
     }
     const bootAccInfo = bootstrap.account.memberships.find(item => item.organization.capabilities.includes('chat')).organization;
     cookieModel = bootstrap.statsig.values.layer_configs["HPOHwBLNLQLxkj5Yn4bfSkgCQnBX28kPR7h/BNKdVLw="]?.value?.console_default_model_override?.model || bootstrap.statsig.values.dynamic_configs["6zA9wvTedwkzjLxWy9PVe7yydI00XDQ6L5Fejjq/2o8="]?.value?.model;
-    if (!AI.mdl().includes(cookieModel)) {
-        Config.unknownModels.push(cookieModel);
-        writeSettings(Config);
-    }
     isPro = bootAccInfo.capabilities.includes('claude_pro');
-    if (Config.CookieArray?.length > 0 && (isPro ? 'claude_pro' : cookieModel) != Config.CookieArray[currentIndex].split('@')[0]) {
+    if (Config.CookieArray?.length > 0 && (isPro ? 'claude_pro' : cookieModel) != Config.CookieArray[currentIndex].split('@')[0] || !AI.mdl().includes(cookieModel)) {
         Config.CookieArray[currentIndex] = (isPro ? 'claude_pro' : cookieModel) + '@' + Config.Cookie;
+        !AI.mdl().includes(cookieModel) && Config.unknownModels.push(cookieModel);
         writeSettings(Config);
     }
     if (!isPro && model && model != cookieModel) return CookieChanger();
@@ -415,9 +412,8 @@ const updateParams = res => {
             }
             res.json({
                 data: [
-                    ...AI.mdl().concat(Config.unknownModels).map((name => ({ id: name }))), {
-                        id: 'claude-3-default'
-                }].concat(models?.data).reduce((acc, current, index) => {
+                    ...AI.mdl().concat(Config.unknownModels).map((name => ({ id: name })))
+                ].concat(models?.data).reduce((acc, current, index) => {
                     index === 0 && modelList.splice(0);
                     if (current?.id && acc.every(model => model.id != current.id)) {
                         acc.push(current);
@@ -452,7 +448,7 @@ const updateParams = res => {
 /************************* */
                     const thirdKey = req.headers.authorization?.match(/(?<=(3rd|oai)Key:).*/), oaiAPI = /oaiKey:/.test(req.headers.authorization), forceModel = /--force/.test(body.model);
                     apiKey = thirdKey?.[0].split(',').map(item => item.trim()) || req.headers.authorization?.match(/sk-ant-api\d\d-[\w-]{86}-[\w-]{6}AA/g);
-                    model = apiKey || /claude-(?!3-default)/.test(body.model) || forceModel || isPro ? body.model.replace(/--force/, '').trim() : cookieModel;
+                    model = apiKey || forceModel || isPro ? body.model.replace(/--force/, '').trim() : cookieModel;
                     let max_tokens_to_sample = body.max_tokens, stop_sequences = body.stop, top_p = typeof body.top_p === 'number' ? body.top_p : undefined, top_k = typeof body.top_k === 'number' ? body.top_k : undefined;
                     if (!apiKey && (Config.ProxyPassword != '' && req.headers.authorization != 'Bearer ' + Config.ProxyPassword || !uuidOrg)) {
                         throw Error(uuidOrg ? 'ProxyPassword Wrong' : 'No cookie available or apiKey format wrong');
@@ -759,6 +755,7 @@ const updateParams = res => {
                             attachments,
                             files: [],
                             model: isPro || forceModel ? model : undefined,
+                            rendering_mode: 'raw',
                             ...Config.Settings.PassParams && {
                                 max_tokens_to_sample, //
                                 stop_sequences, //
@@ -828,10 +825,6 @@ const updateParams = res => {
                     setTitle('ok ' + bytesToSize(clewdStream.size));
                     if (!AI.mdl().includes(clewdStream.compModel) && !apiKey) {
                         Config.unknownModels.push(clewdStream.compModel);
-                        writeSettings(Config);
-                    }
-                    if (Config.CookieArray?.length > 0 && !isPro && clewdStream.compModel != Config.CookieArray[currentIndex].split('@')[0] && !apiKey) {
-                        Config.CookieArray[currentIndex] = clewdStream.compModel + '@' + Config.Cookie;
                         writeSettings(Config);
                     }
                     console.log(`${200 == fetchAPI.status ? '[32m' : '[33m'}${fetchAPI.status}![0m\n`);
