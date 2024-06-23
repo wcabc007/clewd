@@ -908,7 +908,7 @@ const updateParams = res => {
     }
     Config.rProxy = Config.rProxy.replace(/\/$/, '');
     Config.CookieArray = [...new Set([Config.CookieArray].join(',').match(/(claude[-_][a-z0-9-_]*?@)?(sessionKey=)?sk-ant-sid01-[\w-]{86}-[\w-]{6}AA/g))];
-    Config.unknownModels = Config.unknownModels.map(item => AI.mdl().every(model => model != item));
+    Config.unknownModels = Config.unknownModels.reduce((prev, cur) => AI.mdl().includes(cur) ? prev : [...prev, cur], []);
     writeSettings(Config);
     currentIndex = Config.CookieIndex > 0 ? Config.CookieIndex - 1 : Config.Cookiecounter >= 0 ? Math.floor(Math.random() * Config.CookieArray.length) : 0;
 /***************************** */
