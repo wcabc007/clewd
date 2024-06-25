@@ -189,6 +189,7 @@ let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonate
         padtxt: "1000,1000,15000",
         xmlPlot: true,
         SkipRestricted: false,
+        Artifacts: false,
         Superfetch: true
     }
 };
@@ -361,6 +362,18 @@ const updateParams = res => {
         else if (Config.Settings.SkipRestricted) return CookieChanger(); //
     }
     changing = false; //
+    if (bootstrap.account.settings.preview_feature_uses_artifacts != Config.Settings.Artifacts) {
+        const settingsRes = await (Config.Settings.Superfetch ? Superfetch : fetch)((Config.rProxy || AI.end()) + `/api/account`, {
+            method: 'PUT',
+            headers: {
+                ...AI.hdr(),
+                Cookie: getCookies()
+            },
+            body: JSON.stringify({ settings: Object.assign(bootstrap.account.settings, { preview_feature_uses_artifacts: Config.Settings.Artifacts }) }),
+        });
+        await checkResErr(settingsRes);
+        updateParams(settingsRes);
+    }
     const convRes = await (Config.Settings.Superfetch ? Superfetch : fetch)(`${Config.rProxy || AI.end()}/api/organizations/${accInfo.uuid}/chat_conversations`, { //const convRes = await fetch(`${Config.rProxy || AI.end()}/api/organizations/${uuidOrg}/chat_conversations`, {
         method: 'GET',
         headers: {
