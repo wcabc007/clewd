@@ -361,7 +361,6 @@ const updateParams = res => {
         if (banned) return CookieCleaner('Banned') //
         else if (Config.Settings.SkipRestricted) return CookieChanger(); //
     }
-    changing = false; //
     if (bootstrap.account.settings.preview_feature_uses_artifacts != Config.Settings.Artifacts) {
         const settingsRes = await (Config.Settings.Superfetch ? Superfetch : fetch)((Config.rProxy || AI.end()) + `/api/account`, {
             method: 'PUT',
@@ -374,6 +373,7 @@ const updateParams = res => {
         await checkResErr(settingsRes);
         updateParams(settingsRes);
     }
+    changing = false;
     const convRes = await (Config.Settings.Superfetch ? Superfetch : fetch)(`${Config.rProxy || AI.end()}/api/organizations/${accInfo.uuid}/chat_conversations`, { //const convRes = await fetch(`${Config.rProxy || AI.end()}/api/organizations/${uuidOrg}/chat_conversations`, {
         method: 'GET',
         headers: {
@@ -775,7 +775,7 @@ const updateParams = res => {
                             rendering_mode: 'raw',
                             ...Config.Settings.PassParams && {
                                 max_tokens_to_sample, //
-                                stop_sequences, //
+                                //stop_sequences, //
                                 top_k, //
                                 top_p, //
                                 temperature
