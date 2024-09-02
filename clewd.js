@@ -725,11 +725,11 @@ const updateParams = res => {
                                 method: 'POST',
                                 signal,
                                 headers: {
-                                    'User-Agent': AI.agent(),
+                                    'anthropic-version': '2023-06-01',
                                     'authorization': 'Bearer ' + key,
                                     'Content-Type': 'application/json',
+                                    'User-Agent': AI.agent(),
                                     'x-api-key': key,
-                                    'anthropic-version': '2023-06-01'
                                 },
                                 body: JSON.stringify({
                                     ...oaiAPI || messagesAPI ? {
